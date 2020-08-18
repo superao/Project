@@ -6,8 +6,12 @@
 #include <unistd.h>
 #include <sstream>
 #include <boost/algorithm/string.hpp>
+#include <boost/filesystem.hpp>
 #include "Tcpsocket.hpp"
 using namespace std;
+
+#define SEVRVICEROOT "./DataResource"      // 服务器根目录 
+#define NOTFINDHTML "./HTML/404page.html"  // 服务器404页面
 
 /******************************************************************
  * HttpRequest类：
@@ -214,7 +218,29 @@ class HttpRequest
                 }
             }
 
-            // 如果没有语法错误，那么看看该路径是否存在，如果不存在返回404，其他情况下返回200
+            // 检测请求路径是否合法
+            bool isexist = false;
+            string realpath = SEVRVICEROOT + _path;
+
+            // 检测当前是否是根目录
+            if(_path == "/")
+                isexist = true;
+
+            // 检测服务器根目录中是否存在该文件
+            boost::filesystem::recursive_directory_iterator begin(SEVRVICEROOT);
+            boost::filesystem::recursive_directory_iterator end; 
+            for(; begin != end; ++begin)
+            {
+                string temppath = begin->path().string();
+                if(temppath == realpath)
+                {
+                    isexist = true;
+                }
+            }
+
+            // 服务器中不存在该资源
+            if(_method == "GET" && isexist == false) 
+                return 404;
 
             // 解析成功
             return 200;
@@ -253,7 +279,12 @@ class HttpResponse
         // 正常响应头部信息
         bool NormalResponseHeader(Tcpsocket& clisock)
         {
-            // 构建 HTML 数据
+            // 组织响应报文头部信息
+            // (说明: 这里设置一些常规的与服务器相关的头部信息，与正文相关的报文信息在组织正文数据的时候设置)
+            SetHeaders("Accept-Ranges", "bytes");
+            SetHeaders("Etag", "svsd21sdvsd231vsdvs21");
+            
+            // 构建完整头部信息
             stringstream ss;
             ss << "HTTP/1.1" << " " << _status << " " << _msg << "\r\n";
             for(auto& e : _header)
@@ -280,6 +311,58 @@ class HttpResponse
         // 错误响应(响应400, 404页面)
         bool ErrorResponse(Tcpsocket& clisock)
         {
+            stringstream sshtml;
+            string bodylength;
+            
+            // 正文(目的：为了获取正文长度)
+            int fd = open(NOTFINDHTML, O_RDONLY);
+            if(fd < 0)
+            {
+                cout << "Http.hpp/ErrorResponse(): open error!" << endl;
+                return false;
+            }
+
+            bodylength = to_string(lseek(fd, 0, SEEK_END));
+            lseek(fd, 0, SEEK_SET);
+
+            stringstream body;
+            char buf[BUFSIZE];
+            while(1)
+            {
+                memset(buf, 0, BUFSIZE);
+                int ret = read(fd, buf, BUFSIZE);
+                if(ret < 0)
+                {
+                    cout << "Http.hpp/ErrorResponse(): read error!" << endl;
+                    return false;
+                }
+                else if(ret == 0)
+                    break;
+
+                string temp;
+                temp.assign(buf, ret);
+                body << temp;
+            }
+
+            close(fd);
+
+            // 首行
+            sshtml << "HTTP/1.1" << " " << _status << " " << _msg << "\r\n";
+
+            // 头部
+            SetHeaders("Content-Type", "text/html");
+            SetHeaders("Content-Length", "bodylength");
+            for(auto& e : _header)
+            {
+                sshtml << e.first << ": " << e.second << "\r\n";
+            }
+            sshtml << "\r\n";
+
+            sshtml << body.str();
+
+            // 发送报文
+            clisock.Send(sshtml.str());
+
             return true;
         }
 
