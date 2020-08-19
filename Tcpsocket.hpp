@@ -98,6 +98,7 @@ class Tcpsocket
                     else 
                     {
                         cout << "Tcpsocket.hpp/Recv(): recv error!" << endl;
+                        perror("Recv error!");
                         return false;
                     }
                 }
@@ -127,6 +128,7 @@ class Tcpsocket
                 else 
                 {
                     cout << "Tcpsocket.hpp/RecvPeek(): recv error" << endl;
+                    perror("Recv error!");
                     return false;
                 }
             }
@@ -150,8 +152,11 @@ class Tcpsocket
             int ret = send(_sockfd, date.c_str(), date.size(), 0);
             if(ret < 0)
             {
-                cout << "Tcpsocket.hpp/Send(): send error!" << endl;
-                return false;
+                {
+                    cout << "Tcpsocket.hpp/Send(): send error!" << endl;
+                    perror("Send error!");
+                    return false;
+                }
             }
 
             return true;
@@ -177,6 +182,7 @@ class Tcpsocket
                     else 
                     {
                         cout << "Tcpsocket.hpp/Send(): send error!" << endl;
+                        perror("Send error!");
                         return false;
                     }
                 }
