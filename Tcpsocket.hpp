@@ -5,7 +5,9 @@
 #include <string>
 #include <error.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -18,6 +20,7 @@ using namespace std;
 class Tcpsocket 
 {
     public:
+        typedef void (*func)(int avg);
         Tcpsocket() :_sockfd(-1) {}
 
         bool TcpsockInit(const uint16_t port_tmp)
@@ -101,6 +104,7 @@ class Tcpsocket
                 else if(ret == 0)
                 {
                     cout << "Tcpsocket.hpp/Recv(): Peer closed" << endl;
+                    close(_sockfd);
                     return false;
                 }
 
@@ -119,9 +123,7 @@ class Tcpsocket
             if(ret < 0)
             {
                 if(errno == EAGAIN)
-                {
                     return true;
-                }
                 else 
                 {
                     cout << "Tcpsocket.hpp/RecvPeek(): recv error" << endl;
@@ -131,6 +133,7 @@ class Tcpsocket
             else if(ret == 0)
             {
                 cout << "Tcpsocket.hpp/RecvPeek(): Peer closed" << endl;
+                close(_sockfd);
                 return false;
             }
 
@@ -147,7 +150,7 @@ class Tcpsocket
             int ret = send(_sockfd, date.c_str(), date.size(), 0);
             if(ret < 0)
             {
-                cout << "Tcpsocket.hpp/Send(): send error" << endl;
+                cout << "Tcpsocket.hpp/Send(): send error!" << endl;
                 return false;
             }
 
@@ -201,7 +204,7 @@ class Tcpsocket
         {
             close(_sockfd);
         }
-
+        
     private:
         // 设置文件非阻塞状态
         void SetNonblock()
