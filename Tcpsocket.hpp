@@ -171,14 +171,11 @@ class Tcpsocket
             int curlen = 0;
             while(curlen < (int)datelen)
             {
-                int ret = send(_sockfd, date.c_str(), BUFSIZE, 0);
+                int ret = send(_sockfd, &date[0] + curlen, datelen - curlen, 0);
                 if(ret < 0)
                 {
                     if(errno == EAGAIN)
-                    {
-                        usleep(100);
                         continue;
-                    }
                     else 
                     {
                         cout << "Tcpsocket.hpp/Send(): send error!" << endl;
