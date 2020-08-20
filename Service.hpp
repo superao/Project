@@ -20,7 +20,9 @@ using namespace std;
 #define LISTTAIL "./HTML/list_tail.html"   // 服务器列表文件末尾
 #define NOTFINDHTML "./HTML/404page.html"  // 服务器404页面
 
-void sighandle(const int date);
+int clisockfd = 0;                         // 标识客户端套接字，当触发SIGPIPE时关闭当前套接字
+
+void sighandle(const int date);            // SIGPIPE信号处理方式
 bool ReadFile(stringstream& ss, const char* filename);
 
 class Service 
@@ -48,10 +50,6 @@ class Service
             // 初始化线程池
             _thpool.ThreadInit();
 
-            // 自定义SIGPIPE信号
-            // (防止由于接收端处理不及时导致发送端非阻塞socket的发送缓冲区堆积大量数据后，而导致产生SIGPIPE信号，导致进程退出)
-            signal(SIGPIPE, sighandle);
-
             // 获取监听套接字描述符
             int fd = _lissock.Getfd();
             _ep.EpollAdd(fd);
@@ -74,11 +72,13 @@ class Service
                         Tcpsocket clisock;
                         ret = sock.Accept(clisock);
                         if(ret == false)
-                        {
                             continue;
-                        }
 
                         _ep.EpollAdd(clisock.Getfd());
+                        
+                        // 自定义客户端socket对SIGPIPE信号的处理
+                        clisockfd = clisock.Getfd();
+                        signal(SIGPIPE, sighandle);
                     }
                     else 
                     {
@@ -141,8 +141,6 @@ class Service
                 cout << "Service.hpp/ThreadPoolHandle(): HttpHandle error" << endl;
                 return false;
             }
-
-            cout << "当前功能基本结束了，关闭当前套接字！" << endl;
 
             // 关闭套接字   (响应完毕后直接关闭了套接字->短链接   短链接长连接的区别？)
             clisock.Close();
@@ -214,7 +212,7 @@ class Service
                 cout << "进入文件下载功能" << endl;
                 // 正文长度
                 string bodylength;
-                
+
                 // 检测当前请求是否为断点续传
                 unordered_map<string, string>::iterator it = req._headers.find("Range");
                 if(it == req._headers.end())
@@ -550,8 +548,10 @@ class Service
 
                 string temp;
                 temp.assign(buf, ret);
+                
                 res.SetBody(temp);
-                res.NormalResponseBody(clisock);
+                bool retbody = res.NormalResponseBody(clisock);
+                if(!retbody) return false;
             }
 
             close(fd);
@@ -566,17 +566,13 @@ class Service
             size_t endpos = range.find("-", startpos);               // - 号的下一个位置是范围请求的结束
             
             // 切割出数字
-            string range1;          // 范围开始
+            stringstream range1;          // 范围开始
             for(size_t i = startpos + 1; i < endpos; ++i)
-                range1 += range[i];
+                range1 << range[i];
 
-            string range2;          // 范围结束
+            stringstream range2;          // 范围结束
             for(size_t i = endpos + 1; i < range.size(); ++i)
-                range2 += range[i];
-
-            // 检测请求范围
-            cout << "范围开始：" << range1 << endl;
-            cout << "范围结束：" << range2 << endl;
+                range2 << range[i];
 
             // 打开文件
             int fd = open(path.c_str(), O_RDONLY);
@@ -587,33 +583,31 @@ class Service
             }
 
             // 计算文件大小
-            string filelength = to_string(lseek(fd, 0, SEEK_END));
+            off_t filelength = lseek(fd, 0, SEEK_END);
             lseek(fd, 0, SEEK_SET);
 
             // 组织响应头部
             stringstream ss;
-            ss << "bytes " << range1 << "-" << range2 << "/" << filelength;
+            ss << "bytes " << range1.str() << "-" << range2.str() << "/" << filelength;
             res.SetHeaders("Content-Range", ss.str());
             res.SetHeaders("Content-Type", "application/octet-stream");
+            res.SetHeaders("Accept-Encoding", "identity");
 
             // 计算正文长度
-            string bodylength;
-            if(range2.size() == 0)
-            {
-                bodylength = to_string(atoi(filelength.c_str()) - atoi(range1.c_str()) + 1);
-                res.SetHeaders("Contene-Length", bodylength);
-            }
+            off_t r1, r2;
+            range1 >> r1;
+            range2 >> r2;
+            if(range2.str().size() != 0)
+                res.SetHeaders("Content-Length", to_string(r2 - r1));
             else 
-            {
-                bodylength = to_string(atoi(range2.c_str()) - atoi(range1.c_str()) + 1);
-                res.SetHeaders("Contene-Length", bodylength);
-            }
+                res.SetHeaders("Content-Length", to_string(filelength - r1));
 
-            // 发送响应头部
-            res.NormalResponseHeader(clisock);
 
             // 将文件指针偏移到指定的请求位置
-            lseek(fd, atoi(range1.c_str()), SEEK_SET);
+            lseek(fd, r1, SEEK_SET);
+            
+            // 发送响应头部
+            res.NormalResponseHeader(clisock);
 
             // 读取文件数据 (边读取边发送)
             char buf[BUFSIZE];
@@ -621,7 +615,6 @@ class Service
             {
                 memset(buf, 0, BUFSIZE);
                 int ret = read(fd, buf, BUFSIZE);
-                cout << "当前读到了：" << ret << "!!!!!!!!!!!!!!!" << endl;
                 if(ret < 0)
                 {
                     cout << "Service.hpp/Rangeload(): read error!" << endl;
@@ -629,16 +622,16 @@ class Service
                 }
                 else if(ret == 0)
                     break;                      // 到达文件末尾
-
+                
                 string temp;
                 temp.assign(buf, ret);
+
                 res.SetBody(temp);
-                cout << "send body message!" << "-----------------------" << endl;
-                res.NormalResponseBody(clisock);
+                bool retbody = res.NormalResponseBody(clisock);
+                if(!retbody) return false;
             }
 
-            cout << "断点续传结束了！" << "---------------------" << endl;
-             
+            close(fd);
             return true;
         }
 
@@ -721,8 +714,8 @@ class Service
 
 void sighandle(const int date)
 {
-    // 什么都不干！
-    cout << "接受到了SIGPIPE信号，进程退出！" << endl;
+    // 关闭套接字
+    close(clisockfd);
 }
 
 bool ReadFile(stringstream& ss, const char* filename)
