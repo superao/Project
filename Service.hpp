@@ -419,7 +419,7 @@ class Service
             }
             else if(pid == 0)
             {
-                // 设置环境变量，传输头部信息
+                // 设置环境变量，传输请求头部
                 for(auto& e : req._headers)
                 {
                     ret = setenv(e.first.c_str(), e.second.c_str(), 1);
@@ -434,25 +434,26 @@ class Service
                 close(pipefdin[1]);
                 close(pipefdout[0]);
 
-                // 子进程进行程序替换，因此需要重定向文件描述符
+                // 由于要程序替换，故重定向文件描述符进行通信
                 dup2(pipefdin[0], 1);                                     // 将管道的读取端与标准输出关联起来。
                 dup2(pipefdout[1], 0);                                    // 将管道的写入端与标准输入关联起来。
 
                 // 子进程程序替换 
                 execlp(CGI, CGI, NULL);                                   // main函数参数来接受传递的参数
+
+                // 关闭重定向后的文件描述符
+                close(pipefdin[0]);
+                close(pipefdout[1]);
             }
 
             // 父进程关闭管道不用的一端
             close(pipefdin[0]);
             close(pipefdout[1]);
 
-            // 自定义SIGPIPE信号  ->  (防止管道写端关闭后，继续向管道写数据)
-            signal(SIGPIPE, sighandle);
+            // 忽略SIGPIPE信号
+            signal(SIGPIPE, SIG_IGN);
 
-            // 向子进程发送正文信息
-            cout << "接下来是正文信息！" << "-------------------++++++++++++++++-" <<endl;
-            cerr << req._body << endl;
-            cerr << "向子进程发送数据！" << endl;
+            // 向子进程发送正文数据
             size_t wlen = 0;
             while(wlen < req._body.size())
             {
@@ -491,6 +492,9 @@ class Service
             res.SetHeaders("Content-Length", to_string(sshtml.str().size()));
 
             res.SetBody(sshtml.str());
+
+            close(pipefdin[1]);
+            close(pipefdout[0]);
 
             return true;
         }
@@ -720,7 +724,7 @@ void sighandle(const int date)
 
 bool ReadFile(stringstream& ss, const char* filename)
 {
-    // 打开html文件
+    // 打开文件
     int fd = open(filename, O_RDWR);
     if(fd < 0)
     {
@@ -754,6 +758,9 @@ bool ReadFile(stringstream& ss, const char* filename)
         ss << str;
         curread += ret;
     }
+
+    // 关闭文件
+    close(fd);
 
     return true;
 }
