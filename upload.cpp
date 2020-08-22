@@ -1,4 +1,3 @@
-// 文件上传
 #include <iostream>
 #include <unistd.h>
 #include <stdlib.h>
@@ -13,20 +12,20 @@
 #include <sys/stat.h>
 using namespace std;
 
-#define BUFSIZE 10240                               // 缓冲区大小
-#define SEVRVICEROOT "./DataResource/"              // 服务器根目录
+#define BUFSIZE 10240                               // 文件接受缓冲区
+#define SAVEROOT "./DataResource/AllData/"          // 储存文件的根目录
 #define SUCCESSHTML "./HTML/uploadsuccess.html"     // 文件上传成功HTML界面
 
-// boundary 字段
+// boundary区域
 class Boundary
 {
     public:
         string _data;              // 文件数据
-        string _name;              // input 请求字段
+        string _name;              // input请求字段
         string _filename;          // 文件名称
 };
 
-// 在所有环境变量中，解析出所需数据
+// 解析环境变量 
 bool EnvParse(vector<string>& envlist, string& boundary, string& len)
 {
     // 寻找所需环境变量
@@ -36,179 +35,182 @@ bool EnvParse(vector<string>& envlist, string& boundary, string& len)
     {
         // Content-Type
         if(e.find("Content-Type") != string::npos)
-        {
             boundaryenv = e;
-        }
+        
         // Content-Length
         if(e.find("Content-Length") != string::npos)
-        {
             lenenv = e;
-        }
     }
 
-    // 解析环境变量，获取所需数据
-    string btemp = "boundary=";
-    size_t bpos = boundaryenv.find(btemp, 0);
+    // 解析各个字段
+    string bdystr = "boundary=";
+    size_t bpos = boundaryenv.find(bdystr, 0);
     if(bpos == string::npos)
     {
-        cerr << "Cannot find the specified character! boundary=" << endl;
+        cerr << "upload.cpp/EnvParse(): Cannot find the boundary=" << endl;
         return false;
     }
-    boundary = boundaryenv.substr(bpos + btemp.size());
+    boundary = boundaryenv.substr(bpos + bdystr.size());
 
-    string ltemp = "= ";
-    size_t lpos = lenenv.find(ltemp, 0);
+    string lenstr = "= ";
+    size_t lpos = lenenv.find(lenstr, 0);
     if(lpos == string::npos)
     {
-        cerr << "Cannot find the specified character! = " << endl;
+        cerr << "upload.cpp/EnvParse(): Cannot find the = " << endl;
         return false;
     }
-    len = lenenv.substr(lpos + ltemp.size());
+    len = lenenv.substr(lpos + lenstr.size());
 
     return true;
 }
 
-// 解析正文中的头部信息(name, filename)
-bool HeadParse(string& header, string& name, string& filename)
+// 解析本区域的头部信息 -> name, filename
+bool ParseHead(string& headdata, Boundary& temp)
 {
-    // 分割头部信息
-    vector<string> hlist;
-    boost::split(hlist, header, boost::is_any_of("\r\n"), boost::token_compress_on);
-
-    // 遍历查找 Content-Disposition
-    string contentdisposition;
-    for(auto& e : hlist)
-    {
-        if(e.find("Content-Disposition", 0) != string::npos)
-        {
-            contentdisposition = e;
-        }
-    }
-
-    // 查找 name, filename
-    string findstr = "\"";
+    // 定义查找的特定字符
     string findstr1 = "name=\"";
     string findstr2 = "filename=\"";
-    // name
-    size_t pos1 = header.find(findstr1, 0);
-    size_t pos2 = header.find(findstr, pos1 + findstr1.size());
-    if(pos1 == string::npos || pos2 == string::npos)
-    {
-        cerr << "数据格式错误" << endl;
-        return false;
-    }
-    name = header.substr(pos1 + findstr1.size(), pos2 - pos1 - findstr1.size());
+    string findstr3 = "\"";
 
-    // filename
-    pos1 = header.find(findstr2, 0);
-    pos2 = header.find(findstr, pos1 + findstr2.size());
-    if(pos1 != string::npos && pos2 != string::npos)        // filename 在有些数据段中有可能不存在
-    {
-        filename = header.substr(pos1 + findstr2.size(), pos2 - pos1 - findstr2.size());
-    }
+    // 查找name的值
+    size_t startpos = headdata.find(findstr1, 0);
+    size_t endpos = headdata.find(findstr3, startpos + findstr1.size());
+    if(startpos == string::npos || endpos == string::npos)
+        return false;
+
+    string name = headdata.substr(startpos + findstr1.size(), endpos - (startpos + findstr1.size()));
+    temp._name = name;
+    
+    // 查找filename的值
+    startpos = headdata.find(findstr2, 0);
+    endpos = headdata.find(findstr3, startpos + findstr2.size());
+    if(startpos == string::npos || endpos == string::npos)
+        return true;
+
+    string filename = headdata.substr(startpos + findstr2.size(), endpos - (startpos + findstr2.size()));
+    temp._filename = filename;
 
     return true;
 }
 
-// 解析正文 boundary 中的文件数据
-bool BoundaryParse(string& body, string& boundary, string& fname, string& textdata)
+// 解析本区域相关数据
+bool ParsePartData(string& partdata, Boundary& temp)
 {
-    // 储存分段信息
-    vector<Boundary> blist;
+    // 当前区域头部信息
+    string endflag = "\r\n\r\n";
+    size_t pos = partdata.find(endflag, 0);
+    string headdata = partdata.substr(0, pos - 0 + 1);
+    stringstream ss;
+    ss << "     ++++     " << headdata << "     +++++      " << endl;
+    cerr << ss.str();
 
-    // 规定特殊字符
-    size_t pos = 0, nextpos = 0;                 // pos 指向数据起始位置，nextpos 指向数据终止位置
+    // 解析头部信息
+    ParseHead(headdata, temp);
+
+    // 切割文件数据
+    string filedata;
+    size_t startfilepos = pos + endflag.size();
+    size_t endfilepos = partdata.size() - 2;         // "\r\n"
+    filedata = partdata.substr(startfilepos, endfilepos - startfilepos + 1);
+    temp._data = filedata;
+
+    return true;
+}
+
+// 从正文信息中解析出文件数据
+bool BoundaryParse(const string& body, const string& boundary, string& filename, stringstream& filedata)
+{
+    // 定义特殊字符
+    size_t startpos = 0, endpos = 0;
     string flag = "--";
-    string linebreak = "\r\n";
-    string doublelinebreak = "\r\n\r\n";
-    string fboundary = flag + boundary;
-    string lboundary = fboundary + flag + linebreak;
-
-    while(pos < body.size())
+    string fboundary = flag + boundary;                             // 每个区域的起始标记
+    string lboundary = fboundary + flag;                            // 正文数据的结束标记 (其中包含着起始标记)
+    
+    // 将正文划分为多个区域
+    vector<Boundary> boundarylist;
+    while(1)
     {
-        pos = body.find(fboundary, pos);
-        nextpos = body.find(linebreak, pos);
-        if(pos == string::npos || nextpos == string::npos)
+        startpos = body.find(fboundary, startpos);                  // 当前区域的起始位置
+        endpos = body.find(fboundary, startpos + 1) - 1;            // 当前区域的终止位置
+        if(endpos == string::npos - 1)
         {
-            cerr << "数据格式错误" << endl;
-            return false;
+            endpos = body.find(lboundary, startpos + 1) - 1;
+            if(endpos == string::npos - 1)
+                break;
         }
 
-        // 储存每个头部信息
-        string head;
-        pos = nextpos + linebreak.size();
-        nextpos = body.find(doublelinebreak, pos);
-        head = body.substr(pos, nextpos - pos);
+        // 切割当前区域
+        string partdata;
+        partdata = body.substr(startpos, endpos - startpos + 1);
+        cerr << "当前区域为: " << endl;
+        cerr << partdata << endl;
 
-        // 储存每个上传数据
-        string data;
-        pos = nextpos + doublelinebreak.size();
-        nextpos = body.find(fboundary, pos);            
-        data = body.substr(pos, nextpos - pos - linebreak.size());
+        // 解析当前区域
+        Boundary temp;
+        ParsePartData(partdata, temp);
+        boundarylist.push_back(temp);
 
-        // 解析本分段头部信息
-        string name, filename;
-        int ret = HeadParse(head, name, filename);
-        if(ret == false)
-        {
-            cerr << "HeadParse error" << endl;
-            return false;
-        }
-
-        // 进行储存
-        Boundary bo;
-        bo._name = name;
-        bo._filename = filename;
-        bo._data = data;
-        blist.push_back(bo);
-
-        // pos指向下一个分段头部
-        pos = nextpos;
-        string breakstr = body.substr(pos);
-        if(breakstr == lboundary)
-        {
-            break;
-        }
+        startpos = endpos;
     }
 
     // 遍历组织信息
-    stringstream ss;
-    for(auto& e : blist)
+    for(auto& e : boundarylist)
     {
         if(e._filename.size() != 0 && e._name == "fileload")
         {
-            fname = e._filename;
-            ss << e._data;
+            filename = e._filename;
+            filedata << e._data;
         }
     }
-    textdata = ss.str();                     
 
     return true;
 }
 
-// 储存文件
-bool SaveFile(string& path, string& body)
+// 写文件
+bool SaveFile(const string& filename, const string& body)
 {
-    // 创建文件流对象(写)
-    ofstream fout;
-    fout.open(path, ofstream::out | ofstream::trunc );
-    if(!fout.is_open())
+    // 文件完整路径
+    string filepath = SAVEROOT + filename;
+
+    // 创建文件
+    int filefd = open(filepath.c_str(), O_RDWR | O_CREAT, 0664);
+    if(filefd < 0)
     {
-        cerr << "open file error" << endl;
+        cerr << "upload.cpp/SaveFile(): open error!" << endl;
         return false;
     }
 
-    // 写入文件
-    fout.write(body.c_str(), body.size());
-    if(!fout.good())
+    // 设置非阻塞模式
+    int flag = fcntl(filefd, F_GETFL);
+    fcntl(filefd, F_SETFL, flag | O_NONBLOCK);
+
+    // 写入数据
+    size_t bodylen = body.size();
+    size_t curwrite = 0;
+    while(curwrite < bodylen)
     {
-        cerr << "write date error" << endl;
-        return false;
+        int ret = write(filefd, &body[0] + curwrite, bodylen - curwrite);
+        if(ret < 0)
+        {
+            if(ret == EAGAIN)
+                continue;
+            else 
+            {
+                cerr << "upload.cpp/SaveFile(): write error!" << endl;
+                return false;
+            }
+        }
+
+        curwrite += ret;
     }
+
+    // 关闭文件
+    close(filefd);
 
     return true;
 }
 
+// 读文件
 bool ReadFile(stringstream& ss, const char* filename)
 {
     // 打开文件
@@ -246,12 +248,28 @@ bool ReadFile(stringstream& ss, const char* filename)
         curread += ret;
     }
 
+    // 关闭文件
+    close(fd);
+
     return true;
+}
+
+uint64_t stringtouint64(string strnum)
+{
+    uint64_t num = 0;
+    uint64_t lastnum = 0;
+    for(int i = strnum.size() - 1, j = 0; i >= 0; --i, ++j)
+    {
+        num = (strnum[i] - '0') * pow(10, j) + lastnum; 
+        lastnum = num;
+    }
+
+    return num;
 }
 
 int main(int argc, char* argv[], char* env[]) 
 {
-    // 接受所有环境变量 (main函数参数 / getenv())
+    // 接受环境变量 (main函数参数 / getenv())
     vector<string> envlist;
     for(int i = 0; env[i] != NULL; ++i)
     {
@@ -260,7 +278,7 @@ int main(int argc, char* argv[], char* env[])
         envlist.push_back(temp);
     }
 
-    // 从环境变量中解析出以下信息
+    // 解析环境变量 
     string length;                      // 正文长度  
     string boundary;                    // boundary字符
     int ret = EnvParse(envlist, boundary, length);
@@ -270,56 +288,52 @@ int main(int argc, char* argv[], char* env[])
         return -1;
     }
 
-    // 测试所解析出的头部信息
-    cerr << "length:" << length << endl;
-    cerr << "boundary:" << boundary << endl;
-
-    // 利用解析出的正文长度，循环接受正文数据
-    cerr << "子进程开始接受数据!" << endl; 
-    int datelen = atoi(length.c_str());
-    int rlen = 0;
-    string body;
-    body.resize(datelen);
-    while(rlen < datelen)
+    // 接受正文数据 
+    stringstream bodydata;
+    uint64_t datalen = stringtouint64(length);
+    char buf[BUFSIZE];
+    uint64_t rlen = 0;
+    while(rlen < datalen)
     {
-        // string temp;               这种临时变量的方式非常浪费时间，最后还需要一次拷贝，这种很浪费时间。
-        // temp.resize(datelen);
-        ret = read(1, &body[0] + rlen, datelen - rlen);
+        memset(buf, 0, BUFSIZE);
+        ret = read(1, buf, BUFSIZE);
         if(ret < 0)
         {
-            cerr << "read error" << endl;
+            cerr << "upload.cpp: read error" << endl;
             return -1;
         }
 
+        string temp;
+        temp.assign(buf, ret);
+        bodydata << temp;
         rlen += ret;
     }
-    cerr << "子进程接受数据完毕!" << endl;
-    cerr << "-------------正文数据为： " << endl;
-    cerr << body;
 
     // 解析正文数据
-    string fname;
-    string textdata;
-    ret = BoundaryParse(body, boundary, fname, textdata);
+    string filename;
+    stringstream filedata;
+    ret = BoundaryParse(bodydata.str(), boundary, filename, filedata);
     if(ret == false)
     {
-        cerr << "BoundaryParse error" << endl;
+        cerr << "upload.cpp: BoundaryParse error" << endl;
         return -1;
     }
 
-    // 储存文件   (注：fname 只是一个文件名，需要加上服务器根目录)
-    string fullfilename = SEVRVICEROOT + fname;
-    ret = SaveFile(fullfilename, textdata);
+    // 储存文件 
+    ret = SaveFile(filename, filedata.str());
     if(ret == false)
     {
-        cerr << "SaveFile error" << endl;
+        cerr << "upload.cpp: SaveFile error" << endl;
         return -1;
     }
 
-    // 向父进程发送响应信息
+    // 发送响应信息
     stringstream successhtml;
     ReadFile(successhtml, SUCCESSHTML);
     write(0, successhtml.str().c_str(), successhtml.str().size());
+
+    close(0);
+    close(1);
 
     return 0;
 }
