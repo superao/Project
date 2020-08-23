@@ -401,12 +401,14 @@ class Service
             if(ret < 0)
             {
                 cout << "Service.hpp/CGIUpload(): pipe create error" << endl;
+                perror("pipe error!");
                 return false;
             }
             ret = pipe(pipefdout);
             if(ret < 0)
             {
                 cout << "Service.hpp/CGIUpload(): pipe create error" << endl;
+                perror("pipe error!");
                 return false;
             }
 
@@ -414,7 +416,8 @@ class Service
             pid_t pid = fork();
             if(pid < 0)
             {
-                cerr << "Service.hpp/CGIUpload(): fork error: " << errno << endl;
+                cerr << "Service.hpp/CGIUpload(): fork error! " << endl;
+                perror("fork error!");
                 return false;
             }
             else if(pid == 0)
@@ -426,6 +429,7 @@ class Service
                     if(ret < 0)
                     {
                         cerr << "Service.hpp/CGIUpload(): setenv error" << endl;
+                        perror("setenv error!");
                         continue;
                     }
                 }
@@ -461,6 +465,7 @@ class Service
                 if(ret < 0)
                 {
                     cerr << "Service.hpp/CGIUpload(): write error" << endl;
+                    perror("write error!");
                     return false;
                 }
 
@@ -477,6 +482,7 @@ class Service
                 if(ret < 0)
                 {
                     cerr << "Service.hpp/CGIUpload(): read error" << endl;
+                    perror("read error!");
                     return false;
                 }
 
@@ -507,6 +513,7 @@ class Service
             if(fd < 0)
             {
                 cout << "Service.hpp/Filesize(): open error!" << endl;
+                perror("open error!");
                 return false;
             }
 
@@ -528,6 +535,7 @@ class Service
             if(fd < 0)
             {
                 cout << "Service.hpp/Download(): open error!" << endl;
+                perror("open error!");
                 return false;
             }
 
@@ -542,6 +550,7 @@ class Service
                 if(ret < 0)
                 {
                     cout << "Service.hpp/Download(): read error!" << endl;
+                    perror("read error!");
                     return false;
                 }
                 else if(ret == 0)
@@ -583,6 +592,7 @@ class Service
             if(fd < 0)
             {
                 cout << "Service.hpp/Rangeload(): open error!" << endl;
+                perror("open error!");
                 return false;
             }
 
@@ -622,6 +632,7 @@ class Service
                 if(ret < 0)
                 {
                     cout << "Service.hpp/Rangeload(): read error!" << endl;
+                    perror("read error!");
                     return false;
                 }
                 else if(ret == 0)
@@ -729,6 +740,7 @@ bool ReadFile(stringstream& ss, const char* filename)
     if(fd < 0)
     {
         cout << "Service.hpp/ReadFile(): open error!" << endl;
+        perror("open error!");
         return false;
     }
 
@@ -750,6 +762,7 @@ bool ReadFile(stringstream& ss, const char* filename)
         if(ret < 0)
         {
             cout << "Service.hpp/ReadFile(): read error!" << endl;
+            perror("read error");
             return false;
         }
 
