@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <error.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -80,14 +81,14 @@ class Tcpsocket
         }
 
         // 接受数据(非阻塞 + 轮询)
-        bool Recv(string& date, int len) 
-        {                                         
+        bool Recv(string& data, uint64_t len) 
+        {
             SetNonblock();
-            date.resize(len);    // 事先开辟空间，避免后续开空间 + 拷贝带来的效率消耗
-            int rlen = 0;
+            data.resize(len);
+            uint64_t rlen = 0;
             while(rlen < len)
             {
-                int ret = recv(_sockfd, &date[0] + rlen, len - rlen, 0);
+                int ret = recv(_sockfd, &data[0] + rlen, len - rlen, 0);
                 if(ret < 0)
                 {
                     if(errno == EAGAIN)
@@ -164,12 +165,12 @@ class Tcpsocket
 
         // 发送数据
         // 大量数据采用非阻塞循环发送
-        bool Send(const string& date, size_t datelen)
+        bool Send(const string& date, uint64_t datelen)
         {
             // 大量数据采用非阻塞循环发送
             SetNonblock();
-            int curlen = 0;
-            while(curlen < (int)datelen)
+            uint64_t curlen = 0;
+            while(curlen < datelen)
             {
                 int ret = send(_sockfd, &date[0] + curlen, datelen - curlen, 0);
                 if(ret < 0)
