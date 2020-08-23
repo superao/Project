@@ -13,6 +13,8 @@ using namespace std;
 #define SEVRVICEROOT "./DataResource"      // 服务器根目录 
 #define NOTFINDHTML "./HTML/404page.html"  // 服务器404页面
 
+uint64_t stringtouint64(string strnum);
+
 /******************************************************************
  * HttpRequest类：
  *    成员变量：
@@ -38,12 +40,12 @@ class HttpRequest
         bool RecvMessage(Tcpsocket& sock)
         {
             // 寻找 Content-Lenth 头部
-            size_t datelen = 0;
+            uint64_t datelen = 0;
             for(auto& it : _headers)                      // for循环的底层是怎么实现的?
             {
                 if(it.first == "Content-Length")
                 {
-                    datelen = atoi(it.second.c_str());
+                    datelen = stringtouint64(it.second);
                 }
             }
 
@@ -150,15 +152,16 @@ class HttpRequest
         // 解析头部(head 单个头部信息)
         bool ParseHeaders(string& head)
         {
-            size_t headpos = head.find(": ", 0);
+            string findstr1 = ": ";
+            size_t headpos = head.find(findstr1, 0);
             if(headpos == string::npos)
             {
                 cout << "请求头部格式错误！" << endl;
                 return false;
             }
 
-            string key = head.substr(0, headpos);
-            string value = head.substr(headpos + 1);
+            string key = head.substr(0, headpos - 1 + 1);
+            string value = head.substr(headpos + findstr1.size());
             _headers[key] = value;
 
             return true;
@@ -185,7 +188,7 @@ class HttpRequest
                 cout << str.first << ": " << str.second << endl;
             }      
             cout << "************************************************" << endl;
-            cout << "正文信息: \n" << _body << endl;
+            cout << "正文信息: \n" << "..." << endl;
             cout << "************************************************" << endl;
 
             return true;
@@ -293,8 +296,15 @@ class HttpResponse
             }
             ss << "\r\n";
 
+            cout << ss.str() << endl;
+
             // 发送 HTTP 头部信息
-            clisock.Send(ss.str());
+            int ret = clisock.Send(ss.str());
+            if(ret == false)
+            {
+                cout << "Http.hpp/NormalResponseHeader(): Send error!" << endl;
+                return false;
+            }
 
             return true;
         }
@@ -303,7 +313,12 @@ class HttpResponse
         bool NormalResponseBody(Tcpsocket& clisock)
         {
             // 发送 HTTP 正文信息
-            clisock.Send(_body, _body.size());
+            int ret = clisock.Send(_body, _body.size());
+            if(ret == false)
+            {
+                cout << "Http.hpp/NormalResponseBody(): Send error!" << endl;
+                return false;
+            }
 
             return true;
         }
@@ -361,7 +376,12 @@ class HttpResponse
             sshtml << body.str();
 
             // 发送报文
-            clisock.Send(sshtml.str());
+            int ret = clisock.Send(sshtml.str());
+            if(ret == false)
+            {
+                cout << "Http.hpp/ErrorResponse(): Send error!" << endl;
+                return false;
+            }
 
             return true;
         }
@@ -419,5 +439,18 @@ class HttpResponse
         unordered_map<string, string> _header;      // 头部信息
         string _body;                               // 正文信息   
 };
+
+uint64_t stringtouint64(string strnum)
+{
+    uint64_t num = 0;
+    uint64_t lastnum = 0;
+    for(int i = strnum.size() - 1, j = 0; i >= 0; --i, ++j)
+    {
+        num = (strnum[i] - '0') * pow(10, j) + lastnum; 
+        lastnum = num;
+    }
+
+    return num;
+}
 
 #endif 

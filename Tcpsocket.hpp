@@ -92,10 +92,7 @@ class Tcpsocket
                 if(ret < 0)
                 {
                     if(errno == EAGAIN)
-                    {
-                        usleep(100);
                         continue;
-                    }
                     else 
                     {
                         cout << "Tcpsocket.hpp/Recv(): recv error!" << endl;
