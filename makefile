@@ -1,6 +1,6 @@
-all:TestMain upload
-.PHONY:TestMain upload
-TestMain:TestMain.cpp
-	g++ -std=c++11 $^ -o $@ -lpthread -lboost_system -lboost_filesystem
+all:testmain upload
+	.PHONY:TestMain upload
+testmain:TestMain.cpp
+		g++ -std=c++11 $^ -o $@ -lpthread -lboost_system -lboost_filesystem
 upload:upload.cpp
-	g++ -std=c++11 $^ -o ./upload 
+		g++ -std=c++11 $^ -o ./upload 
