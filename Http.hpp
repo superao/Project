@@ -41,7 +41,7 @@ class HttpRequest
         {
             // 寻找 Content-Lenth 头部
             uint64_t datelen = 0;
-            for(auto& it : _headers)                      // for循环的底层是怎么实现的?
+            for(auto& it : _headers) 
             {
                 if(it.first == "Content-Length")
                 {
@@ -142,7 +142,7 @@ class HttpRequest
                     }
                     string key = e.substr(0, findstrpos);
                     string value = e.substr(findstrpos + 1);
-                    _reqstr[key] = value;                                   // 哈希表[]是怎么实现的?
+                    _reqstr[key] = value; 
                 }
             }
 
@@ -285,7 +285,7 @@ class HttpResponse
             // 组织响应报文头部信息
             // (说明: 这里设置一些常规的与服务器相关的头部信息，与正文相关的报文信息在组织正文数据的时候设置)
             SetHeaders("Accept-Ranges", "bytes");
-            SetHeaders("Etag", "svsd21sdvsd231vsdvs21");
+            SetHeaders("Etag", "123abcd456");
             
             // 构建完整头部信息
             stringstream ss;
