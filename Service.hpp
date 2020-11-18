@@ -94,7 +94,7 @@ class Service
             return true;
         }
 
-        // 定义线程处理函数      (类中的静态函数如何调用？静态变量？)
+        // 定义线程处理函数
         static bool ThreadPoolHandle(int date)
         {
             Tcpsocket clisock;
@@ -142,7 +142,7 @@ class Service
                 return false;
             }
 
-            // 关闭套接字   (响应完毕后直接关闭了套接字->短链接   短链接长连接的区别？)
+            // 关闭套接字   (响应完毕后直接关闭了套接字->短链接) 
             clisock.Close();
 
             return true;
@@ -412,7 +412,7 @@ class Service
                 return false;
             }
 
-            // 创建子进程               (fork一类的相关问题?)
+            // 创建子进程 
             pid_t pid = fork();
             if(pid < 0)
             {
